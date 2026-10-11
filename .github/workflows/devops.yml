@@ -87,6 +87,9 @@ jobs:       # ← todos los jobs van anidados aquí
   package:
     needs: test              # Dependencia: espera a que termine 'test'
     runs-on: ubuntu-latest
+    outputs:
+      package_name: ${{ steps.package_meta.outputs.name }}
+      build_tag: ${{ needs.test.outputs.build_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -97,11 +100,13 @@ jobs:       # ← todos los jobs van anidados aquí
           TAG: ${{ needs.test.outputs.build_tag }}
 
       - name: Create zip
+        id: package_meta
         run: |
           mkdir -p dist
-          cp hello.py dist/
-          zip -r "app-${{ needs.test.outputs.build_tag }}.zip" dist
-          mv "app-${{ needs.test.outputs.build_tag }}.zip" dist/
+          cp hello.py site/index.html dist/
+          PACKAGE_NAME="app-${{ needs.test.outputs.build_tag }}.zip"
+          zip -j "dist/${PACKAGE_NAME}" dist/hello.py dist/index.html
+          echo "name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Upload package
         uses: actions/upload-artifact@v4
@@ -112,8 +117,116 @@ jobs:       # ← todos los jobs van anidados aquí
     runs-on: ubuntu-latest
     needs: [test, package]
     steps:
-      - name: Echo info (Bash)
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render site
+        env:
+          BUILD_TAG: ${{ needs.test.outputs.build_tag }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          mkdir -p public
+          APP_OUTPUT="$(python hello.py)"
+          export APP_OUTPUT
+          sed \
+            -e "s|__BUILD_TAG__|${BUILD_TAG}|g" \
+            -e "s|__COMMIT_SHORT__|${GITHUB_SHA::7}|g" \
+            -e "s|__COMMIT_URL__|${COMMIT_URL}|g" \
+            -e "s|__BRANCH__|${GITHUB_REF_NAME}|g" \
+            -e "s|__ACTOR__|${GITHUB_ACTOR}|g" \
+            -e "s|__DATE__|$(date -u '+%Y-%m-%d %H:%M:%S')|g" \
+            -e "s|__RUN_URL__|${RUN_URL}|g" \
+            -e "s|__RUN_NUMBER__|${GITHUB_RUN_NUMBER}|g" \
+            -e "s|__REPO_URL__|${REPO_URL}|g" \
+            site/index.html > public/index.html
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          page = Path("public/index.html")
+          page.write_text(page.read_text().replace("__APP_OUTPUT__", os.environ["APP_OUTPUT"]))
+          PY
+
+      - name: Upload rendered site
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-site
+          path: public
+
+      - name: Echo build information
         run: |
           echo "Repo: $GITHUB_REPOSITORY"
           echo "Evento: $GITHUB_EVENT_NAME"
           echo "Runner: $RUNNER_OS"
+          echo "Package: ${{ needs.package.outputs.package_name }}"
+
+  deploy:
+    needs: [package]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read      # checkout (un bloque permissions por job deja en none lo que no lista)
+      pages: write        # publicar en Pages
+      id-token: write     # token temporal que exige actions/deploy-pages
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}   # aparece como link en la UI
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Render page
+        env:
+          BUILD_TAG: ${{ needs.package.outputs.build_tag }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          mkdir -p public
+          APP_OUTPUT="$(python hello.py)"
+          export APP_OUTPUT
+          sed \
+            -e "s|__BUILD_TAG__|${BUILD_TAG}|g" \
+            -e "s|__COMMIT_SHORT__|${GITHUB_SHA::7}|g" \
+            -e "s|__COMMIT_URL__|${COMMIT_URL}|g" \
+            -e "s|__BRANCH__|${GITHUB_REF_NAME}|g" \
+            -e "s|__ACTOR__|${GITHUB_ACTOR}|g" \
+            -e "s|__DATE__|$(date -u '+%Y-%m-%d %H:%M:%S')|g" \
+            -e "s|__RUN_URL__|${RUN_URL}|g" \
+            -e "s|__RUN_NUMBER__|${GITHUB_RUN_NUMBER}|g" \
+            -e "s|__REPO_URL__|${REPO_URL}|g" \
+            site/index.html > public/index.html
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          page = Path("public/index.html")
+          page.write_text(page.read_text().replace("__APP_OUTPUT__", os.environ["APP_OUTPUT"]))
+          PY
+
+      - name: Log package
+        env:
+          PACKAGE_NAME: ${{ needs.package.outputs.package_name }}
+        run: echo "Desplegando ${PACKAGE_NAME}"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
