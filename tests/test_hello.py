@@ -1,4 +1,4 @@
-from hello import greet, add, is_even
+from hello import add, divide, greet, is_even, multiply, subtract
 
 
 def test_greet():
@@ -16,3 +16,15 @@ def test_is_even():
     assert is_even(4) is True
     assert is_even(3) is False
     assert is_even(0) is True
+
+
+def test_multiply():
+    assert multiply(4, 3) == 12
+
+
+def test_subtract():
+    assert subtract(9, 4) == 5
+
+
+def test_divide():
+    assert divide(9, 3) == 3
