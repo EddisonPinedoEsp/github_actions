@@ -1,0 +1,109 @@
+name: Release
+run-name: "Release ${{ github.ref_name }} por ${{ github.actor }}"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Validate release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: |
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          pytest -q --junitxml=report.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-report
+          path: report.xml
+          if-no-files-found: warn
+
+      - name: Publish test summary
+        if: always()
+        run: |
+          {
+            echo "## Resultado de las pruebas"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Python | $(python --version) |"
+            echo "| Estado | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    name: Build release package
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      package_name: ${{ steps.package_meta.outputs.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build package
+        id: package_meta
+        run: |
+          mkdir -p dist
+          PACKAGE_NAME="app-${GITHUB_REF_NAME}.zip"
+          zip -j "dist/${PACKAGE_NAME}" hello.py site/index.html
+          echo "name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package
+          path: dist/*.zip
+
+  release:
+    name: Publish GitHub Release
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release package
+        uses: actions/download-artifact@v4
+        with:
+          name: release-package
+          path: dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "dist/${{ needs.package.outputs.package_name }}" \
+            --title "Release $GITHUB_REF_NAME" \
+            --generate-notes
+
+      - name: Publish release summary
+        run: |
+          {
+            echo "## Release publicada"
+            echo ""
+            echo "| Campo | Valor |"
+            echo "|---|---|"
+            echo "| Tag | \`${GITHUB_REF_NAME}\` |"
+            echo "| Paquete | \`${{ needs.package.outputs.package_name }}\` |"
+            echo "| Estado | ${{ job.status }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
