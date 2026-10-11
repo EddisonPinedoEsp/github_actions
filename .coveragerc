@@ -1,0 +1,9 @@
+[run]
+source = .
+omit =
+    tests/*
+
+[report]
+fail_under = 80
+exclude_also =
+    if __name__ == ["']__main__["']:

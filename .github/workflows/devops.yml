@@ -41,11 +41,32 @@ jobs:       # ← todos los jobs van anidados aquí
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # STEP 5: Run tests
+      # STEP 5: Run tests and generate JUnit/Coverage XML reports
       - name: Run tests
         run: |
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          pytest -q
+          pytest -q \
+            --junitxml=report.xml \
+            --cov=hello \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      # Keep the percentage visible in the run summary and in the logs.
+      - name: Publish coverage summary
+        if: always()
+        run: |
+          echo "## Cobertura" >> "$GITHUB_STEP_SUMMARY"
+          coverage report --precision=2 | tee -a "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: |
+            report.xml
+            coverage.xml
+          if-no-files-found: warn
 
       # STEP 6: Create build tag  ← el step que alimenta outputs.build_tag
       - name: Compute build tag

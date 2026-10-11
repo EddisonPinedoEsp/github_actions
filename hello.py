@@ -10,6 +10,11 @@ def is_even(n: int) -> bool:
     return n % 2 == 0
 
 
+def multiply(a: int, b: int) -> int:
+    """Multiplica dos números; se deja sin pruebas para simular baja cobertura."""
+    return a * b
+
+
 
 if __name__ == "__main__":
     print(greet("GitHub Actions"))
