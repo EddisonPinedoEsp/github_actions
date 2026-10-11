@@ -29,25 +29,38 @@ jobs:
       - name: Run tests
         run: |
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          pytest -q --junitxml=report.xml
+          pytest -q \
+            --junitxml=report.xml \
+            --cov=hello \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
 
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-test-report
-          path: report.xml
+          path: |
+            report.xml
+            coverage.xml
           if-no-files-found: warn
 
       - name: Publish test summary
         if: always()
         run: |
+          TESTS=$(grep -o 'tests="[0-9]*"' report.xml | head -1 | cut -d'"' -f2 || echo "0")
+          FAILURES=$(grep -o 'failures="[0-9]*"' report.xml | head -1 | cut -d'"' -f2 || echo "0")
+          COVERAGE=$(coverage report --format=markdown 2>/dev/null | tail -n 2 | head -n 1 || echo "No disponible")
           {
-            echo "## Resultado de las pruebas"
+            echo "## Resultado del Job test"
             echo ""
             echo "| Campo | Valor |"
             echo "|---|---|"
-            echo "| Python | $(python --version) |"
+            echo "| Build tag | \`${GITHUB_REF_NAME}\` |"
+            echo "| Python | \`$(python --version)\` |"
+            echo "| Tests | ${TESTS} |"
+            echo "| Fallos | ${FAILURES} |"
+            echo "| Cobertura | ${COVERAGE} |"
             echo "| Estado | ${{ job.status }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -82,6 +95,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+
       - name: Download release package
         uses: actions/download-artifact@v4
         with:
