@@ -15,6 +15,11 @@ def multiply(a: int, b: int) -> int:
     return a * b
 
 
+def subtract(a: int, b: int) -> int:
+    """Resta dos números; se deja sin pruebas para simular el fallo."""
+    return a - b
+
+
 
 if __name__ == "__main__":
     print(greet("GitHub Actions"))
