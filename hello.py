@@ -20,6 +20,11 @@ def subtract(a: int, b: int) -> int:
     return a - b
 
 
+def divide(a: float, b: float) -> float:
+    """Divide dos números; se deja sin pruebas para probar el umbral."""
+    return a / b
+
+
 
 if __name__ == "__main__":
     print(greet("GitHub Actions"))
